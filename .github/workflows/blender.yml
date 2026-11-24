@@ -1,0 +1,74 @@
+name: Blender clothing
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/blender.yml'
+      - 'addon/**'
+      - 'tools/**'
+      - 'examples/**'
+  pull_request:
+    paths:
+      - '.github/workflows/blender.yml'
+      - 'addon/**'
+      - 'tools/**'
+      - 'examples/**'
+  workflow_dispatch:
+    inputs:
+      model:
+        description: 'Optional model path in this repository. Leave empty to build the sample.'
+        required: false
+        type: string
+      meshes:
+        description: 'Optional JSON list of garment mesh names to export, e.g. ["Jacket", "Cuffs"]'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  clothing:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          lfs: ${{ github.event_name == 'workflow_dispatch' && inputs.model != '' }}
+          persist-credentials: false
+
+      - name: Build the dress form and test the outfit
+        if: ${{ inputs.model == '' }}
+        run: |
+          python3 tools/blender.py demo
+          python3 tools/blender.py inspect "build/demo/Dress form.blend" --report build/demo/model.json
+
+      - name: Inspect or export the chosen avatar outfit
+        if: ${{ inputs.model != '' }}
+        shell: python
+        env:
+          MODEL: ${{ inputs.model }}
+          MESHES: ${{ inputs.meshes }}
+        run: |
+          import json, os, subprocess, sys
+          from pathlib import Path
+          root = Path(os.environ["GITHUB_WORKSPACE"])
+          model = (root / os.environ["MODEL"]).resolve()
+          if not model.is_relative_to(root) or not model.is_file():
+              sys.exit("Choose a model file inside this repository.")
+          meshes = json.loads(os.environ["MESHES"] or "[]")
+          if not isinstance(meshes, list) or not all(isinstance(name, str) and name for name in meshes):
+              sys.exit("Enter garment names as a JSON list of strings.")
+          tool = [sys.executable, "tools/blender.py"]
+          subprocess.run([*tool, "inspect", str(model), "--report", "build/avatar/model.json"], check=True)
+          if meshes:
+              args = [arg for name in meshes for arg in ("--mesh", name)]
+              subprocess.run([*tool, "export", str(model), *args, "--output", "build/avatar/Outfit.fbx"], check=True)
+
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: blender-clothing
+          path: build/
+          if-no-files-found: error
+          retention-days: 14

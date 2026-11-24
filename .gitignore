@@ -1,0 +1,7 @@
+/.tools/
+/build/
+__pycache__/
+*.pyc
+*.blend[0-9]*
+.DS_Store
+Thumbs.db
